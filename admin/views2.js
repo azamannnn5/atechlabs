@@ -49,9 +49,9 @@
         note.value = o.admin_note || "";
         var wa = (o.phone || "").replace(/\D/g, "");
         list.appendChild(h("details", { class: "card", style: { margin: "6px 0" } },
-          h("summary", null, "#" + o.order_no + "  " + o.customer_name + "  " + A.money(o.subtotal) + "  ", h("span", { class: "chip" + (o.status === "new" ? " warn" : o.status === "cancelled" ? " bad" : " on") }, o.status), h("span", { class: "orig" }, "  " + A.date(o.created_at))),
+          h("summary", null, "#" + o.order_no + "  " + o.customer_name + "  " + A.money(o.total != null ? o.total : o.subtotal) + "  ", h("span", { class: "chip" + (o.status === "new" ? " warn" : o.status === "cancelled" ? " bad" : " on") }, o.status), h("span", { class: "orig" }, "  " + A.date(o.created_at))),
           h("div", { style: { marginTop: "8px" } }, items),
-          h("p", null, h("b", null, "Phone: "), o.phone, h("br"), h("b", null, "Email: "), o.email || "-", h("br"), h("b", null, "Address: "), o.address, h("br"), h("b", null, "Notes: "), o.notes || "-", h("br"), h("b", null, "Sent via: "), o.channel || "-"),
+          h("p", null, h("b", null, "Phone: "), o.phone, h("br"), h("b", null, "Email: "), o.email || "-", h("br"), h("b", null, "Address: "), o.address, h("br"), h("b", null, "Notes: "), o.notes || "-", h("br"), h("b", null, "Sent via: "), o.channel || "-", h("br"), h("b", null, "Payment method: "), o.payment_method || "-", h("br"), h("b", null, "Contact by: "), o.contact_method || "-", h("br"), h("b", null, "Discount: "), Number(o.discount) > 0 ? "-" + A.money(o.discount) + (o.discount_note ? " (" + o.discount_note + ")" : "") : "-", h("br"), h("b", null, "Shipping: "), Number(o.shipping) > 0 ? A.money(o.shipping) : "Free", h("br"), h("b", null, "Total: "), A.money(o.total != null ? o.total : o.subtotal)),
           h("div", { class: "row" }, h("label", null, "Status ", sel), wa ? h("a", { class: "btn sm", target: "_blank", href: "https://wa.me/" + wa }, "Message on WhatsApp") : null,
             A.can("admin") ? h("button", { class: "btn sm bad", onclick: async function () { if (!confirm("Delete this order for good?")) return; try { await A.rest("DELETE", "orders?id=eq." + o.id); rows = rows.filter(function (x) { return x.id !== o.id; }); draw(); A.refreshBadges(); } catch (e) { A.toast(e.message); } } }, "Delete") : null),
           h("label", { class: "lbl" }, "Private note"), note, replyBox("order", o, "Your order #" + o.order_no)));
@@ -99,20 +99,39 @@
       { k: "ogImage", label: "Sharing image", type: "image", help: "The picture shown when a link is shared." },
       { k: "favicon", label: "Favicon (small tab icon)", type: "image" },
       { k: "noindex", label: "Hide the whole site from search engines", type: "check" }] },
-    banner: { title: "Announcement bar", grp: "banner", note: "A thin bar of text above the header on every page, for example a shipping notice. To change the picture banner use Content > Top banner image.", fields: [
+    banner: { title: "Announcement bar", grp: "banner", note: "A thin bar of text above the header on every page, for example a shipping notice.", fields: [
       { k: "on", label: "Show the bar", type: "check" }, { k: "text", label: "Text", type: "text" }, { k: "link", label: "Link (optional)", type: "text", help: "For example cart.html or https://..." },
       { k: "bg", label: "Background colour", type: "color" }, { k: "color", label: "Text colour", type: "color" },
       { k: "hideImage", label: "Hide the existing picture banner", type: "check" }] },
     look: { title: "Look and feel", grp: "look", note: "Advanced. Custom CSS is added to every page. Leave it empty if you are not sure. Wrong CSS can break the layout; empty the box to go back to the original look.", fields: [
       { k: "css", label: "Custom CSS", type: "code", help: "Example: .btn-dark { background: #0a5; }" }] },
     tracking: { title: "Tracking and chat", grp: "tracking", note: "Connect analytics and the Smartsupp live chat. Paste only the ID or key. Head and body code is added to every page, so only paste code you trust.", fields: [
-      { k: "smartsupp", label: "Smartsupp chat key", type: "text", help: "From Smartsupp > Settings > Chat code. Letters and numbers only." },
+      { k: "smartsupp", label: "Smartsupp chat key", type: "text", help: "From Smartsupp > Settings > Chat code. Letters and numbers only. Leave empty to use the key the site already has." },
       { k: "gaId", label: "Google Analytics ID", type: "text", help: "Looks like G-XXXXXXXXXX" },
       { k: "pixelId", label: "Meta (Facebook) pixel ID", type: "text", help: "Numbers only" },
       { k: "headCode", label: "Custom code for the head", type: "code" }, { k: "bodyCode", label: "Custom code for the end of the page", type: "code" }] },
-    orders: { title: "Orders and contact details", grp: "orders", note: "Where orders go. The email also receives the order alerts from Resend. The WhatsApp number is used by the Order on WhatsApp button in the cart.", fields: [
+    orders: { title: "Orders and contact details", grp: "orders", note: "Where orders go. Every order sends an invoice by Resend to this email and to the customer. The WhatsApp number is used by the Order on WhatsApp button in the cart.", fields: [
       { k: "email", label: "Orders email address", type: "text", help: "For example orders@yourdomain.com" },
       { k: "whatsapp", label: "WhatsApp number", type: "text", help: "Digits only with country code, for example 237600000000" }] },
+    shop: { title: "Shipping and discounts", grp: "shop", note: "Shipping, the minimum order and the bulk order discount. Bulk discounts are by number of items in the cart and apply automatically. Leave a box empty to use the standard value shown in the hint.", fields: [
+      { k: "fee", label: "Shipping fee ($)", type: "text", help: "Standard: 18" },
+      { k: "freeAt", label: "Free shipping from ($)", type: "text", help: "Standard: 150. Counted after discounts." },
+      { k: "minOrder", label: "Minimum order ($)", type: "text", help: "Standard: 100. Counted before discounts. Orders below this cannot be placed." },
+      { k: "b1min", label: "Bulk tier 1: from items", type: "text", help: "Standard: 3" }, { k: "b1max", label: "Bulk tier 1: up to items", type: "text", help: "Standard: 5" }, { k: "b1pct", label: "Bulk tier 1: % off", type: "text", help: "Standard: 5" },
+      { k: "b2min", label: "Bulk tier 2: from items", type: "text", help: "Standard: 6" }, { k: "b2max", label: "Bulk tier 2: up to items", type: "text", help: "Standard: 9" }, { k: "b2pct", label: "Bulk tier 2: % off", type: "text", help: "Standard: 7" },
+      { k: "b3min", label: "Bulk tier 3: from items", type: "text", help: "Standard: 10" }, { k: "b3max", label: "Bulk tier 3: up to items", type: "text", help: "Standard: empty, meaning no upper limit" }, { k: "b3pct", label: "Bulk tier 3: % off", type: "text", help: "Standard: 10" },
+      { k: "cap", label: "Most a customer can save in total (% of subtotal)", type: "text", help: "Standard: 30. Bulk discount and codes together never go above this. Enter 0 for no limit." }] },
+    payments: { title: "Payment instructions", grp: "payments", note: "Shown to the customer after they place an order and in their invoice email, for the method they chose. Never shown on the site before an order. Example: your Bitcoin address, your Apple Pay number, your Chime tag.", fields: [
+      { k: "bitcoin", label: "Bitcoin", type: "textarea" }, { k: "applepay", label: "Apple Pay", type: "textarea" }, { k: "chime", label: "Chime", type: "textarea" }] },
+    welcome: { title: "Welcome popup", grp: "welcome", note: "A popup that asks visitors for their email and sends them a one-time code. The list of emails is under Customers > Subscribers. Each email can use the code once.", fields: [
+      { k: "on", label: "Show the popup (untick to turn it off)", type: "check" },
+      { k: "code", label: "Welcome code", type: "text", help: "Standard: STRONG26. Only sent by email, never shown on the site." },
+      { k: "pct", label: "% off with the code", type: "text", help: "Standard: 10" },
+      { k: "headline", label: "Popup headline", type: "text", help: "Leave empty for: Get 10% off your first order" }] },
+    contactinfo: { title: "Hours and social links", grp: "contactinfo", note: "Shown under the copyright line in the footer of every page. Leave a box empty to hide it. Links must start with https://", fields: [
+      { k: "hours", label: "Working hours", type: "text", help: "For example: Mon - Fri, 9:00 AM - 6:00 PM EST" },
+      { k: "instagram", label: "Instagram link", type: "text" }, { k: "tiktok", label: "TikTok link", type: "text" }, { k: "facebook", label: "Facebook link", type: "text" },
+      { k: "twitter", label: "X (Twitter) link", type: "text" }, { k: "youtube", label: "YouTube link", type: "text" }] },
     contact: { title: "Contact form", grp: "contact", note: "The Contact us form saves messages to Customers > Messages. The wording of the form and its thank-you message is under Content > Contact popup.", fields: [
       { k: "off", label: "Turn off saving messages to the inbox (the form then behaves as before)", type: "check" }] },
     maintenance: { title: "Maintenance mode", grp: "maintenance", note: "Shows visitors a message instead of the site. Add your preview key, then open the site with ?preview=YOURKEY to still see it yourself. Pages under /admin are never blocked.", fields: [
@@ -193,7 +212,7 @@
     var rows = await A.rest("GET", "history?select=*&order=at.desc&limit=200"), list = h("div");
     var show = function (v) { return v == null ? "(nothing)" : typeof v === "string" ? v : JSON.stringify(v, null, 1); };
     rows.forEach(function (x) {
-      var canRestore = A.can("editor") && x.tbl !== "settings" || A.can("admin");
+      var canRestore = ["content", "settings", "products"].indexOf(x.tbl) >= 0 && (A.can("editor") && x.tbl !== "settings" || A.can("admin"));
       list.appendChild(h("details", { class: "card", style: { margin: "6px 0" } },
         h("summary", null, x.tbl + ": " + x.key + "  ", h("span", { class: "chip" }, x.action), h("span", { class: "orig" }, "  " + (x.by_email || "unknown") + ", " + A.date(x.at))),
         h("div", { class: "diff", style: { marginTop: "8px" } }, h("div", null, h("b", null, "Before"), h("br"), show(x.old_val)), h("div", null, h("b", null, "After"), h("br"), show(x.new_val))),
@@ -234,6 +253,62 @@
           var a = h("a", { href: URL.createObjectURL(blob), download: "atechlab-backup-" + new Date().toISOString().slice(0, 10) + ".json" }); document.body.appendChild(a); a.click(); a.remove();
         } }, "Download backup")),
         h("div", { class: "card" }, h("h2", null, "Load a backup"), h("p", { class: "orig" }, "Anything not in the backup file is reset to the original."), file)));
+  });
+
+  /* ---------- promo codes ---------- */
+  A.route("/promos", async function () {
+    var rows = [], canEdit = A.can("admin"), err = null;
+    try { rows = await A.rest("GET", "promo_codes?select=*&order=created_at.desc"); } catch (e) { err = e; }
+    if (err && (err.code === "42P01" || err.code === "PGRST205" || /schema cache|does not exist/i.test(err.message)))
+      return A.pageShell("Promo codes", [["Customers"], ["Promo codes"]], "", h("div", { class: "msg err" }, "Promo codes are not set up yet. Run the latest supabase/schema.sql in the Supabase SQL editor, then reload."));
+    var list = h("div");
+    function dateVal(x) { return x ? new Date(x).toISOString().slice(0, 10) : ""; }
+    rows.forEach(function (r) {
+      var kind = h("select", { disabled: !canEdit, style: { width: "auto" } }, h("option", { value: "percent", selected: r.kind === "percent" }, "Percent off"), h("option", { value: "fixed", selected: r.kind === "fixed" }, "Fixed amount off (USD)"));
+      var val = h("input", { type: "number", min: "0", step: "0.01", value: r.value, disabled: !canEdit, style: { width: "100px" } });
+      var act = h("input", { type: "checkbox", checked: !!r.active, disabled: !canEdit });
+      var exp = h("input", { type: "date", value: dateVal(r.expires_at), disabled: !canEdit, style: { width: "auto" } });
+      var max = h("input", { type: "number", min: "1", step: "1", value: r.max_uses == null ? "" : r.max_uses, placeholder: "No limit", disabled: !canEdit, style: { width: "110px" } });
+      list.appendChild(h("div", { class: "card", style: { margin: "6px 0" } },
+        h("div", { class: "row" }, h("b", null, r.code), h("span", { class: "orig" }, "used " + r.uses + (r.max_uses != null ? " of " + r.max_uses : "") + " times")),
+        h("div", { class: "row", style: { marginTop: "8px" } }, kind, val, h("label", { class: "sub" }, act, " Active"), h("label", { class: "sub" }, "Ends ", exp), h("label", { class: "sub" }, "Limit ", max),
+          canEdit ? h("button", { class: "btn sm pri", onclick: async function () {
+            var v = Number(val.value);
+            if (!(v > 0) || (kind.value === "percent" && v > 100)) { A.toast("Enter a valid amount (percent can be 1 to 100)."); return; }
+            try {
+              await A.rest("PATCH", "promo_codes?code=eq." + encodeURIComponent(r.code), { body: { kind: kind.value, value: v, active: act.checked, expires_at: exp.value ? new Date(exp.value + "T23:59:59").toISOString() : null, max_uses: max.value ? parseInt(max.value, 10) : null }, headers: { Prefer: "return=minimal" } });
+              A.toast("Saved");
+            } catch (e) { A.toast(e.message); }
+          } }, "Save") : null,
+          canEdit ? h("button", { class: "btn sm bad", onclick: async function () { if (!confirm("Delete the code " + r.code + "?")) return; try { await A.rest("DELETE", "promo_codes?code=eq." + encodeURIComponent(r.code)); A.render(); } catch (e) { A.toast(e.message); } } }, "Delete") : null)));
+    });
+    if (!rows.length) list.appendChild(h("p", { class: "orig" }, "No promo codes yet."));
+    var code = h("input", { type: "text", placeholder: "Code, e.g. SAVE10", style: { width: "200px", textTransform: "uppercase" } });
+    var kind = h("select", { style: { width: "auto" } }, h("option", { value: "percent" }, "Percent off"), h("option", { value: "fixed" }, "Fixed amount off (USD)"));
+    var val = h("input", { type: "number", min: "0", step: "0.01", placeholder: "Amount", style: { width: "110px" } });
+    var addCard = canEdit ? h("div", { class: "card" }, h("h2", null, "Add a code"), h("p", { class: "orig" }, "Customers type the code in the cart. Percent codes take that percent off the subtotal. Fixed codes take that many dollars off."),
+      h("div", { class: "row" }, code, kind, val, h("button", { class: "btn pri", onclick: async function () {
+        var c = code.value.trim().toUpperCase(), v = Number(val.value);
+        if (c.length < 2 || !/^[A-Z0-9_-]+$/.test(c)) { A.toast("Use letters, numbers, dash or underscore (2 or more)."); return; }
+        if (!(v > 0) || (kind.value === "percent" && v > 100)) { A.toast("Enter a valid amount (percent can be 1 to 100)."); return; }
+        try { await A.rest("POST", "promo_codes", { body: { code: c, kind: kind.value, value: v }, headers: { Prefer: "return=minimal" } }); A.toast("Added"); A.render(); } catch (e) { A.toast(/duplicate/i.test(e.message) ? "That code already exists." : e.message); }
+      } }, "Add code"))) : h("div", { class: "msg warn" }, "Only admins can see and change promo codes.");
+    return A.pageShell("Promo codes", [["Customers"], ["Promo codes"]], "Codes customers can use in the cart. Changes save right away and take effect immediately.", h("div", null, addCard, h("div", { class: "card" }, h("h2", null, "Your codes"), list)));
+  });
+
+  /* ---------- subscribers (welcome popup signups) ---------- */
+  A.route("/subscribers", async function () {
+    var rows = [], err = null;
+    try { rows = await A.rest("GET", "subscribers?select=*&order=created_at.desc&limit=1000"); } catch (e) { err = e; }
+    if (err) return A.pageShell("Subscribers", [["Customers"], ["Subscribers"]], "", h("div", { class: "msg err" }, /permission|42501/i.test(err.message) ? "Only admins can see subscribers." : "Subscribers are not set up yet. Run the latest supabase/schema.sql in the Supabase SQL editor, then reload."));
+    var list = h("div");
+    rows.forEach(function (r) {
+      list.appendChild(h("div", { class: "row", style: { padding: "4px 0", borderBottom: "1px solid var(--line)" } }, h("b", null, r.email), h("span", { class: "orig" }, A.date(r.created_at)),
+        h("span", { class: "chip" + (r.discount_used ? " on" : "") }, r.discount_used ? "Used the code" : "Has not used the code"),
+        h("button", { class: "btn sm bad", onclick: async function () { if (!confirm("Remove " + r.email + " from the list?")) return; try { await A.rest("DELETE", "subscribers?email=eq." + encodeURIComponent(r.email)); A.render(); } catch (e) { A.toast(e.message); } } }, "Remove")));
+    });
+    if (!rows.length) list.appendChild(h("p", { class: "orig" }, "No signups yet."));
+    return A.pageShell("Subscribers", [["Customers"], ["Subscribers"]], "People who signed up in the welcome popup. " + rows.length + " in total.", h("div", { class: "card" }, list));
   });
 
   /* ---------- team ---------- */

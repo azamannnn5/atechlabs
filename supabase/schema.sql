@@ -62,7 +62,42 @@ create table if not exists public.orders (
   channel       text,
   status        text not null default 'new' check (status in ('new','confirmed','shipped','done','cancelled')),
   admin_note    text,
-  notified_at   timestamptz
+  notified_at   timestamptz,
+  payment_method text,
+  contact_method text,
+  promo_code    text,
+  discount      numeric not null default 0,
+  total         numeric
+);
+-- for databases created before these columns existed
+alter table public.orders add column if not exists payment_method text;
+alter table public.orders add column if not exists contact_method text;
+alter table public.orders add column if not exists promo_code text;
+alter table public.orders add column if not exists discount numeric not null default 0;
+alter table public.orders add column if not exists total numeric;
+alter table public.orders add column if not exists shipping numeric not null default 0;
+alter table public.orders add column if not exists discount_note text;
+
+-- people who signed up through the welcome popup (admin only)
+create table if not exists public.subscribers (
+  email           text primary key,
+  created_at      timestamptz not null default now(),
+  welcome_sent_at timestamptz,
+  discount_used   boolean not null default false,
+  discount_used_at timestamptz
+);
+
+-- promo codes: only the admin can read them. The shop checks a code through check_promo().
+create table if not exists public.promo_codes (
+  code        text primary key check (code = upper(code) and length(code) between 2 and 40),
+  kind        text not null check (kind in ('percent','fixed')),
+  value       numeric not null check (value > 0),
+  active      boolean not null default true,
+  expires_at  timestamptz,
+  max_uses    integer,
+  uses        integer not null default 0,
+  note        text,
+  created_at  timestamptz not null default now()
 );
 
 create table if not exists public.media (
@@ -132,7 +167,8 @@ begin
   snap := jsonb_build_object(
     'v', extract(epoch from clock_timestamp())::bigint,
     'content',  coalesce((select jsonb_object_agg(key, value) from public.content), '{}'::jsonb),
-    'settings', coalesce((select jsonb_object_agg(grp, data) from public.settings), '{}'::jsonb),
+    'settings', coalesce((select jsonb_object_agg(grp, case when grp = 'welcome' then data - 'code' else data end)
+                from public.settings where grp <> 'payments'), '{}'::jsonb),
     'products', coalesce((select jsonb_object_agg(slug, data) from public.products), '{}'::jsonb)
   );
   insert into public.snapshot (id, data, updated_at) values (1, snap, now())
@@ -184,6 +220,8 @@ drop trigger if exists content_log on public.content;
 create trigger content_log after insert or update or delete on public.content for each row execute function public.log_change('key', 'value');
 drop trigger if exists settings_log on public.settings;
 create trigger settings_log after insert or update or delete on public.settings for each row execute function public.log_change('grp', 'data');
+drop trigger if exists promo_log on public.promo_codes;
+create trigger promo_log after insert or update or delete on public.promo_codes for each row execute function public.log_change('code', 'kind');
 drop trigger if exists products_log on public.products;
 create trigger products_log after insert or update or delete on public.products for each row execute function public.log_change('slug', 'data');
 
@@ -205,30 +243,157 @@ begin
   return new_id;
 end $$;
 
+-- old helpers, replaced by quote_order()
+drop function if exists public.check_promo(text,numeric);
+drop function if exists public.promo_discount(text,numeric);
+
+create or replace function public.num_or(t text, d numeric)
+returns numeric language sql immutable as $$
+  select case when t ~ '^\s*[0-9]+(\.[0-9]+)?\s*$' then t::numeric else d end
+$$;
+
+-- One price for a cart: bulk discount, promo or welcome code, shipping, total.
+-- The cart shows this and place_order() saves it, so both always agree.
+create or replace function public.quote_order(p_items jsonb, p_subtotal numeric, p_code text, p_email text)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  sh jsonb := coalesce((select data from public.settings where grp = 'shop'), '{}'::jsonb);
+  wl jsonb := coalesce((select data from public.settings where grp = 'welcome'), '{}'::jsonb);
+  sub numeric := greatest(coalesce(p_subtotal, 0), 0);
+  cnt numeric := 0; bpct numeric := 0; bdisc numeric; pdisc numeric := 0; raw numeric; disc numeric; after numeric; ship numeric;
+  fee numeric; free_at numeric; min_o numeric; cap numeric;
+  ccode text := upper(trim(coalesce(p_code, '')));
+  pc public.promo_codes; applied text := null; msg text := null; is_welcome boolean := false;
+  wcode text; wpct numeric; em text := lower(trim(coalesce(p_email, '')));
+  dmin numeric[] := array[3, 6, 10]; dmax numeric[] := array[5, 9, null]; dpct numeric[] := array[5, 7, 10];
+  k int; mn numeric; mx numeric; pc2 numeric; note text := '';
+begin
+  fee := public.num_or(sh->>'fee', 18);
+  free_at := public.num_or(sh->>'freeAt', 150);
+  min_o := public.num_or(sh->>'minOrder', 100);
+  cap := public.num_or(sh->>'cap', 30);
+  if jsonb_typeof(p_items) = 'array' then
+    select coalesce(sum(least(public.num_or(e->>'qty', 0), 99)), 0) into cnt from jsonb_array_elements(p_items) e;
+  end if;
+  for k in 1..3 loop
+    mn := public.num_or(sh->>('b' || k || 'min'), dmin[k]);
+    mx := case when sh ? ('b' || k || 'max') then public.num_or(sh->>('b' || k || 'max'), null) else dmax[k] end;
+    pc2 := public.num_or(sh->>('b' || k || 'pct'), dpct[k]);
+    if cnt >= mn and (mx is null or cnt <= mx) then bpct := pc2; end if;
+  end loop;
+  bdisc := round(sub * bpct / 100, 2);
+  if bpct > 0 then note := 'Bulk ' || trim_scale(bpct)::text || '%'; end if;
+
+  if ccode <> '' then
+    wcode := upper(trim(coalesce(nullif(trim(wl->>'code'), ''), 'STRONG26')));
+    wpct := public.num_or(wl->>'pct', 10);
+    if ccode = wcode then
+      is_welcome := true;
+      if em <> '' and exists (select 1 from public.subscribers where email = em and discount_used) then
+        msg := 'This code was already used.';
+      else
+        pdisc := round(sub * least(wpct, 100) / 100, 2); applied := ccode;
+      end if;
+    else
+      select * into pc from public.promo_codes where promo_codes.code = ccode;
+      if not found or not pc.active or (pc.expires_at is not null and pc.expires_at < now())
+         or (pc.max_uses is not null and pc.uses >= pc.max_uses) then
+        msg := 'This promo code is not valid.';
+      else
+        if pc.kind = 'percent' then pdisc := round(sub * least(pc.value, 100) / 100, 2);
+        else pdisc := least(pc.value, sub); end if;
+        applied := pc.code;
+      end if;
+    end if;
+    if applied is not null then
+      note := trim(both ' +' from note || ' + code ' || applied);
+    end if;
+  end if;
+
+  raw := bdisc + pdisc;
+  disc := case when cap > 0 then least(raw, round(sub * cap / 100, 2)) else raw end;
+  disc := least(disc, sub);
+  after := sub - disc;
+  ship := case when sub = 0 or after >= free_at then 0 else fee end;
+  return jsonb_build_object(
+    'valid', msg is null, 'message', msg, 'welcome', is_welcome and applied is not null,
+    'subtotal', sub, 'count', cnt, 'bulk_pct', bpct, 'bulk_discount', bdisc,
+    'code', applied, 'code_discount', pdisc, 'discount', disc, 'discount_note', note,
+    'shipping', ship, 'free_at', free_at, 'fee', fee, 'min_order', min_o, 'min_ok', sub >= min_o,
+    'total', after + ship);
+end $$;
+
+drop function if exists public.place_order(text,text,text,text,text,jsonb,numeric,text,text,text,text);
 create or replace function public.place_order(
   p_name text, p_phone text, p_email text, p_address text, p_notes text,
-  p_items jsonb, p_subtotal numeric, p_channel text)
+  p_items jsonb, p_subtotal numeric, p_channel text,
+  p_payment text, p_contact_method text, p_promo text)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare new_id uuid; new_no bigint;
+declare new_id uuid; new_no bigint; q jsonb; n int; pay_key text; instr text;
 begin
   if length(trim(coalesce(p_name,''))) < 2 or length(p_name) > 120 then raise exception 'invalid name'; end if;
   if length(trim(coalesce(p_phone,''))) < 4 or length(p_phone) > 60 then raise exception 'invalid phone'; end if;
   if length(trim(coalesce(p_address,''))) < 4 or length(p_address) > 600 then raise exception 'invalid address'; end if;
+  if coalesce(p_email,'') !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(p_email) > 200 then raise exception 'invalid email'; end if;
+  if p_payment not in ('Bitcoin','Apple Pay','Chime') then raise exception 'invalid payment method'; end if;
+  if p_contact_method not in ('Text message','WhatsApp') then raise exception 'invalid contact method'; end if;
   if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 or jsonb_array_length(p_items) > 100 then
     raise exception 'invalid items';
   end if;
   if (select count(*) from public.orders where phone = p_phone and created_at > now() - interval '1 hour') >= 10 then
     raise exception 'too many orders';
   end if;
-  insert into public.orders (customer_name, phone, email, address, notes, items, subtotal, channel)
-  values (trim(p_name), trim(p_phone), nullif(trim(coalesce(p_email,'')),''), trim(p_address),
-          left(p_notes, 2000), p_items, coalesce(p_subtotal,0), left(p_channel, 30))
+
+  q := public.quote_order(p_items, p_subtotal, p_promo, p_email);
+  if not (q->>'min_ok')::boolean then raise exception 'minimum order not met'; end if;
+
+  -- use up the code atomically; if someone else just used it, price the cart without it
+  if q->>'code' is not null then
+    if (q->>'welcome')::boolean then
+      insert into public.subscribers (email, discount_used, discount_used_at)
+        values (lower(trim(p_email)), true, now())
+        on conflict (email) do update set discount_used = true, discount_used_at = now()
+        where public.subscribers.discount_used = false;
+    else
+      update public.promo_codes set uses = uses + 1
+        where promo_codes.code = q->>'code' and (max_uses is null or uses < max_uses);
+    end if;
+    get diagnostics n = row_count;
+    if n = 0 then q := public.quote_order(p_items, p_subtotal, '', p_email); end if;
+  end if;
+
+  insert into public.orders (customer_name, phone, email, address, notes, items, subtotal, channel,
+                             payment_method, contact_method, promo_code, discount, shipping, discount_note, total)
+  values (trim(p_name), trim(p_phone), trim(p_email), trim(p_address),
+          left(p_notes, 2000), p_items, (q->>'subtotal')::numeric, left(p_channel, 30),
+          p_payment, p_contact_method, q->>'code', (q->>'discount')::numeric, (q->>'shipping')::numeric,
+          nullif(q->>'discount_note', ''), (q->>'total')::numeric)
   returning id, order_no into new_id, new_no;
-  return jsonb_build_object('id', new_id, 'order_no', new_no);
+
+  pay_key := case p_payment when 'Bitcoin' then 'bitcoin' when 'Apple Pay' then 'applepay' else 'chime' end;
+  instr := coalesce((select data->>pay_key from public.settings where grp = 'payments'), '');
+  return jsonb_build_object('id', new_id, 'order_no', new_no, 'discount', q->'discount', 'shipping', q->'shipping',
+                            'total', q->'total', 'instructions', instr);
+end $$;
+
+-- welcome popup signup: saves the address once, the email with the code is sent by the notify function
+create or replace function public.subscribe(p_email text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare e text := lower(trim(coalesce(p_email, ''))); n int;
+begin
+  if e !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(e) > 200 then raise exception 'invalid email'; end if;
+  if (select count(*) from public.subscribers where created_at > now() - interval '1 hour') >= 100 then
+    raise exception 'too many signups';
+  end if;
+  insert into public.subscribers (email) values (e) on conflict (email) do nothing;
+  get diagnostics n = row_count;
+  return jsonb_build_object('new', n = 1);
 end $$;
 
 grant execute on function public.submit_message(text,text,text,text) to anon, authenticated;
-grant execute on function public.place_order(text,text,text,text,text,jsonb,numeric,text) to anon, authenticated;
+grant execute on function public.place_order(text,text,text,text,text,jsonb,numeric,text,text,text,text) to anon, authenticated;
+grant execute on function public.quote_order(jsonb,numeric,text,text) to anon, authenticated;
+grant execute on function public.subscribe(text) to anon, authenticated;
 
 -- Owner adds a team member AFTER creating their login in Authentication > Users
 create or replace function public.add_admin(p_email text, p_role text)
@@ -254,19 +419,22 @@ alter table public.settings enable row level security;
 alter table public.products enable row level security;
 alter table public.messages enable row level security;
 alter table public.orders   enable row level security;
+alter table public.promo_codes enable row level security;
+alter table public.subscribers enable row level security;
 alter table public.media    enable row level security;
 alter table public.history  enable row level security;
 alter table public.snapshot enable row level security;
 
 revoke all on public.admins, public.content, public.settings, public.products, public.messages,
-              public.orders, public.media, public.history, public.snapshot from anon;
+              public.orders, public.media, public.history, public.snapshot, public.promo_codes, public.subscribers from anon;
 revoke all on public.admins, public.content, public.settings, public.products, public.messages,
-              public.orders, public.media, public.history, public.snapshot from authenticated;
+              public.orders, public.media, public.history, public.snapshot, public.promo_codes, public.subscribers from authenticated;
 grant select on public.snapshot to anon, authenticated;
 grant select on public.admins, public.history to authenticated;
 grant select, insert, update, delete on public.content, public.settings, public.products,
-      public.messages, public.orders, public.media to authenticated;
+      public.messages, public.orders, public.media, public.promo_codes to authenticated;
 grant update, delete on public.admins to authenticated;
+grant select, delete on public.subscribers to authenticated;
 
 -- snapshot: everyone reads, nobody writes (only the trigger)
 drop policy if exists snapshot_read on public.snapshot;
@@ -302,6 +470,19 @@ create policy settings_read on public.settings for select to authenticated using
 drop policy if exists settings_write on public.settings;
 create policy settings_write on public.settings for all to authenticated
   using (public.has_role('admin')) with check (public.has_role('admin'));
+
+-- promo codes: only admins see and change them
+drop policy if exists promo_read on public.promo_codes;
+create policy promo_read on public.promo_codes for select to authenticated using (public.has_role('admin'));
+drop policy if exists promo_write on public.promo_codes;
+create policy promo_write on public.promo_codes for all to authenticated
+  using (public.has_role('admin')) with check (public.has_role('admin'));
+
+-- welcome popup signups
+drop policy if exists subscribers_read on public.subscribers;
+create policy subscribers_read on public.subscribers for select to authenticated using (public.has_role('admin'));
+drop policy if exists subscribers_delete on public.subscribers;
+create policy subscribers_delete on public.subscribers for delete to authenticated using (public.has_role('admin'));
 
 -- inbox and orders
 drop policy if exists messages_read on public.messages;

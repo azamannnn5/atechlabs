@@ -16,7 +16,14 @@
   window.CMS = api;
   api.settings = function (g) { return (api.snap && api.snap.settings && api.snap.settings[g]) || {}; };
   api.product = function (slug) { return (api.snap && api.snap.products && api.snap.products[slug]) || null; };
-  if (!api.configured) return;
+  // Smartsupp live chat. The key can be changed in the admin (Site > Tracking and chat); this one is used when none is set.
+  var CHAT_KEY = "f98bf20ad38e4abd0edce23c93756abdaeef16b1";
+  function chat(key) {
+    if (window.smartsupp) return;
+    window._smartsupp = window._smartsupp || {}; window._smartsupp.key = key;
+    (function (d) { var s, c, o = window.smartsupp = function () { o._.push(arguments); }; o._ = []; s = d.getElementsByTagName("script")[0]; c = d.createElement("script"); c.type = "text/javascript"; c.charset = "utf-8"; c.async = true; c.src = "https://www.smartsuppchat.com/loader.js?"; s.parentNode.insertBefore(c, s); })(document);
+  }
+  if (!api.configured) { chat(CHAT_KEY); return; }
 
   function lsGet() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); } catch (e) { return null; } }
   function lsSet(v) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(v)); } catch (e) {} }
@@ -195,10 +202,7 @@
       !function (f, b, e, v, n, t2, s) { if (f.fbq) return; n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); }; if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = "2.0"; n.queue = []; t2 = b.createElement(e); t2.async = !0; t2.src = v; s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t2, s); }(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
       window.fbq("init", t.pixelId); window.fbq("track", "PageView");
     }
-    if (t.smartsupp && /^[A-Za-z0-9]+$/.test(t.smartsupp)) {
-      window._smartsupp = window._smartsupp || {}; window._smartsupp.key = t.smartsupp;
-      window.smartsupp || (function (d) { var s, c, o = window.smartsupp = function () { o._.push(arguments); }; o._ = []; s = d.getElementsByTagName("script")[0]; c = d.createElement("script"); c.type = "text/javascript"; c.charset = "utf-8"; c.async = true; c.src = "https://www.smartsuppchat.com/loader.js?"; s.parentNode.insertBefore(c, s); })(document);
-    }
+    chat(t.smartsupp && /^[A-Za-z0-9]+$/.test(t.smartsupp) ? t.smartsupp : CHAT_KEY);
     if (t.headCode) runHtml(document.head, t.headCode);
     if (t.bodyCode) runHtml(document.body, t.bodyCode);
   }
@@ -242,6 +246,65 @@
     });
   }
 
+  // Hours and social links, shown under the copyright line in the footer
+  function footerExtras(S) {
+    var c = S.contactinfo || {}, box = document.querySelector(".footer__copyright");
+    if (!box || box.querySelector("[data-cms-extras]")) return;
+    var links = [["instagram", "Instagram"], ["tiktok", "TikTok"], ["facebook", "Facebook"], ["twitter", "X"], ["youtube", "YouTube"]].filter(function (x) { return /^https?:\/\//i.test(c[x[0]] || ""); });
+    if (!c.hours && !links.length) return;
+    var d = document.createElement("div"); d.setAttribute("data-cms-extras", "1"); d.style.cssText = "margin-top:12px;font-size:14px;line-height:1.6";
+    if (c.hours) { var h = document.createElement("div"); h.textContent = "Hours: " + c.hours; d.appendChild(h); }
+    if (links.length) {
+      var l = document.createElement("div");
+      links.forEach(function (x, i) {
+        var a = document.createElement("a"); a.href = c[x[0]]; a.target = "_blank"; a.rel = "noopener"; a.textContent = x[1]; a.className = "link-dark";
+        if (i) l.appendChild(document.createTextNode(" / ")); l.appendChild(a);
+      });
+      d.appendChild(l);
+    }
+    box.appendChild(d);
+  }
+
+  // Welcome popup: email signup, the one-time code is sent by email
+  function welcomePopup(S) {
+    var w = S.welcome || {};
+    if (w.on === false || !CFG.url || !CFG.anonKey || /cart\.html$/.test(location.pathname)) return;
+    try { if (localStorage.getItem("atl_welcome_seen")) return; } catch (e) {}
+    var pct = parseFloat(w.pct) > 0 ? parseFloat(w.pct) : 10;
+    setTimeout(function () {
+      try { if (localStorage.getItem("atl_welcome_seen")) return; localStorage.setItem("atl_welcome_seen", "1"); } catch (e) {}
+      var ov = document.createElement("div"); ov.id = "cms-welcome";
+      ov.style.cssText = "position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px";
+      var box = document.createElement("div");
+      box.style.cssText = "background:#fff;color:#111;max-width:420px;width:100%;padding:28px 24px;border:2px solid #111;position:relative;font-family:inherit";
+      var x = document.createElement("button"); x.type = "button"; x.setAttribute("aria-label", "Close"); x.textContent = "\u00d7";
+      x.style.cssText = "position:absolute;top:6px;right:12px;border:0;background:none;font-size:28px;line-height:1;cursor:pointer";
+      var h = document.createElement("h3"); h.style.cssText = "margin:0 0 8px;font-size:22px"; h.textContent = w.headline || ("Get " + pct + "% off your first order");
+      var p = document.createElement("p"); p.style.cssText = "margin:0 0 14px"; p.textContent = "Sign up and we will email you a one-time discount code to use at checkout.";
+      var f = document.createElement("form"); f.noValidate = true; f.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+      var i = document.createElement("input"); i.type = "email"; i.required = true; i.placeholder = "you@example.com"; i.setAttribute("aria-label", "Email"); i.style.cssText = "flex:1;min-width:180px;padding:10px;border:1px solid #111";
+      var b = document.createElement("button"); b.type = "submit"; b.textContent = "Send me my code"; b.style.cssText = "padding:10px 16px;border:0;background:#111;color:#fff;cursor:pointer";
+      var m = document.createElement("div"); m.style.cssText = "margin-top:10px;font-size:14px";
+      f.appendChild(i); f.appendChild(b); box.appendChild(x); box.appendChild(h); box.appendChild(p); box.appendChild(f); box.appendChild(m); ov.appendChild(box); document.body.appendChild(ov);
+      function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+      x.addEventListener("click", close); ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+      f.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var em = i.value.trim();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { m.style.color = "#b00"; m.textContent = "Please enter a valid email."; return; }
+        b.disabled = true; b.textContent = "Sending...";
+        fetch(CFG.url.replace(/\/$/, "") + "/rest/v1/rpc/subscribe", { method: "POST", headers: { apikey: CFG.anonKey, Authorization: "Bearer " + CFG.anonKey, "Content-Type": "application/json" }, body: JSON.stringify({ p_email: em }) })
+          .then(function (r) { if (!r.ok) throw new Error("fail"); return r.json(); })
+          .then(function (res) {
+            if (res && res.new) fetch("/.netlify/functions/notify", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "welcome", email: em }) }).catch(function () {});
+            f.style.display = "none"; m.style.color = "#060"; m.textContent = res && res.new ? "Check your email for your code. Look in spam if you do not see it." : "You are already signed up. Use the code we emailed you.";
+            setTimeout(close, 5000);
+          })
+          .catch(function () { b.disabled = false; b.textContent = "Send me my code"; m.style.color = "#b00"; m.textContent = "Could not sign you up right now. Please try again later."; });
+      });
+    }, 8000);
+  }
+
   function applyAll(snap, first) {
     if (!snap) return;
     var S = snap.settings || {};
@@ -251,7 +314,7 @@
     }
     applyContent(snap);
     applyProducts(snap);
-    if (first) { applySeo(S); applyBanner(S); lookAndFeel(S); tracking(S); contactForms(S); }
+    if (first) { applySeo(S); applyBanner(S); lookAndFeel(S); tracking(S); contactForms(S); footerExtras(S); welcomePopup(S); }
   }
 
   function boot() {

@@ -1,6 +1,6 @@
 // Shared helpers for the Netlify functions. Secrets come only from environment variables.
 const SB_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
-const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "";
 
 const json = (status, obj) => ({
   statusCode: status,

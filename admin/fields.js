@@ -165,7 +165,6 @@
     if (key.indexOf("g.header") === 0) return "/shared/header";
     if (key.indexOf("g.footer") === 0) return "/shared/footer";
     if (key.indexOf("g.contact") === 0) return "/shared/contact";
-    if (key.indexOf("g.banner") === 0) return "/shared/banner";
     if (key.indexOf("product.") === 0) return "/shared/product";
     var f = A.defaults.fields[key];
     return "/page/" + (f && f.pages[0] || "index.html");

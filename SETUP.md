@@ -33,8 +33,8 @@ Site configuration, then Environment variables. Add these:
 - SUPABASE_ANON_KEY: the anon public key
 - SUPABASE_SERVICE_ROLE_KEY: the secret service role key
 - RESEND_API_KEY: from your Resend account
-- RESEND_FROM: the sender, for example "A-Tech Labs <orders@yourdomain.com>" (the domain must be verified in Resend)
-- OWNER_EMAIL: where order and message alerts are sent
+- RESEND_FROM: the sender, for example "A-Tech Labs <orders@atech-labs.com>". In Resend, add and verify the domain atech-labs.com first (Domains, then follow the DNS steps), or emails will not send
+- OWNER_EMAIL: contact@atech-labs.com (where order invoices and message alerts are sent)
 - SITE_NAME: optional, used in emails
 
 After adding them, press Deploy, then Trigger deploy so they are picked up.
@@ -44,19 +44,26 @@ Open your-site.netlify.app/admin/ and sign in with the login from step 2.
 
 ## 7. Fill in the site settings
 In the admin:
-- Orders and contact details: the order email and the WhatsApp number.
+- Orders and contact details: the order email (contact@atech-labs.com) and the WhatsApp number.
+- Payment instructions (Site): your Bitcoin address, Apple Pay number and Chime tag. Customers see the one for their method after ordering and in their invoice email.
+- Shipping and discounts (Site): shipping fee ($18), free shipping from $150, minimum order $100, and the bulk discount tiers (3-5 items 5%, 6-9 items 7%, 10+ items 10%). Each box can be changed; an empty box uses the standard value.
+- Welcome popup (Site): turn it on or off, set the code (STRONG26) and the percent (10). Signups are listed under Customers, Subscribers. Each email can use the code once.
+- Hours and social links (Site): shown in the footer.
+- Promo codes (under Customers): add other codes, for example SAVE10 as 10 percent off. The cart checks them in the database.
 - Tracking and chat: paste your Smartsupp key to turn on live chat.
 - Products: add prices for products that show "Contact for price" (for example GHRP-2 and GHRP-6).
 
 ## How it works in one minute
 - Anything you change in the admin stays unsaved until you press Save and publish at the bottom.
 - If the database is ever unreachable, the site still shows its original text.
-- Orders and contact messages arrive in the admin and also as an email alert.
+- Every order is saved in the admin, and an invoice is emailed to contact@atech-labs.com and to the customer. The cart asks for payment method (Bitcoin, Apple Pay or Chime), how to contact them (text message or WhatsApp) and an optional promo code. Shipping, bulk discount and the minimum order are worked out by the database, so the browser cannot change them.
+- Contact messages arrive in the admin and also as an email alert.
 - Backup and restore is under Site, then Backup. Every change is listed under History and can be restored.
 
 ## Not built yet
 - Receiving customer emails inside the admin (Resend inbound). You can send replies from the admin.
 - The anti-spam check on the contact form is unchanged from the original site.
-- No shipping fee, promo codes or bulk discounts, because the site has none.
+- Product prices in the cart are still read from the site files and the admin, not re-checked by the database.
 - Product order on the shop pages cannot be changed from the admin.
+- Payment is not taken on the site. After the order, you contact the customer to arrange Bitcoin, Apple Pay or Chime payment.
 - Not yet tried against a real Supabase, Netlify or Resend account. It was tested with a copy of the database and a real browser.

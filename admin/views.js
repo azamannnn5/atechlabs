@@ -5,10 +5,10 @@
 
   var NAV = [
     ["", [["/dashboard", "Dashboard"]]],
-    ["Content", [["/pages", "Pages"], ["/shared/header", "Header and menu"], ["/shared/footer", "Footer"], ["/shared/banner", "Top banner image"], ["/shared/contact", "Contact popup"], ["/media", "Images and files"]]],
+    ["Content", [["/pages", "Pages"], ["/shared/header", "Header and menu"], ["/shared/footer", "Footer"], ["/shared/contact", "Contact popup"], ["/media", "Images and files"]]],
     ["Shop", [["/products", "Products"], ["/shared/product", "Text shared by all product pages"]]],
-    ["Customers", [["/orders", "Orders", "orders"], ["/messages", "Messages", "messages"], ["/site/contact", "Contact form"]]],
-    ["Site", [["/site/seo", "Search and sharing"], ["/site/banner", "Announcement bar"], ["/site/look", "Look and feel"], ["/site/tracking", "Tracking and chat"], ["/site/orders", "Orders and contact details"], ["/site/redirects", "Redirects"], ["/site/maintenance", "Maintenance mode"]]],
+    ["Customers", [["/orders", "Orders", "orders"], ["/promos", "Promo codes"], ["/subscribers", "Subscribers"], ["/messages", "Messages", "messages"], ["/site/contact", "Contact form"]]],
+    ["Site", [["/site/seo", "Search and sharing"], ["/site/banner", "Announcement bar"], ["/site/look", "Look and feel"], ["/site/tracking", "Tracking and chat"], ["/site/orders", "Orders and contact details"], ["/site/shop", "Shipping and discounts"], ["/site/payments", "Payment instructions"], ["/site/welcome", "Welcome popup"], ["/site/contactinfo", "Hours and social links"], ["/site/redirects", "Redirects"], ["/site/maintenance", "Maintenance mode"]]],
     ["Admin", [["/admin/history", "Activity and undo"], ["/admin/backup", "Backup and restore"], ["/admin/team", "Team"], ["/admin/help", "Help and guide"]]]
   ];
   A.NAV = NAV;
@@ -241,8 +241,7 @@
 
   var SHARED = {
     header: ["Header and menu", "g.header", "The logo link, menu and the Contact button at the top of every page. One edit here changes every page."],
-    footer: ["Footer", "g.footer", "The footer text, link columns and partner logos shown on every page."],
-    banner: ["Top banner image", "g.banner", "The picture banner shown above the header on every page (desktop and mobile versions) and where it links to. For a plain text announcement use Site > Announcement bar."],
+    footer: ["Footer", "g.footer", "The footer text and link columns shown on every page."],
     contact: ["Contact popup", "g.contact", "Wording of the Contact us popup that opens from the header. Messages sent from it go to Customers > Messages."],
     product: ["Text shared by all product pages", "product.", "Headings and labels that are the same on every product page (for example Key product parameters, Benefits, FAQ). One edit changes all product pages."]
   };
@@ -305,6 +304,10 @@
     card.appendChild(txt("pack", "Pack size on the product page"));
     card.appendChild(h("div", { class: "fld" }, h("div", { class: "top2" }, h("span", { class: "pill Image" }, "Image"), h("span", null, "Product picture")), h("div", { class: "imgf" }, img, h("div", { style: { flex: 1 } }, iin, h("div", { style: { marginTop: "6px" } }, h("button", { type: "button", class: "btn sm", disabled: locked, onclick: function () { A.pickImage(function (u) { iin.value = u; A.setProduct(slug, "image", u); img.src = A.rootUrl(u); }); } }, "Choose image"))))));
     card.appendChild(h("div", { class: "fld" }, h("div", { class: "top2" }, h("span", { class: "pill Setting" }, "Setting"), h("span", null, "Price in USD")), price, h("div", { class: "orig" }, "Original: " + (d.price == null ? "Contact for price" : "$" + d.price))));
+    if (d.kitPrice !== undefined) {
+      var kp = h("input", { type: "number", step: "0.01", min: "0", disabled: locked, placeholder: "Empty = Contact for price", value: A.pValue(slug, "kitPrice") == null ? "" : A.pValue(slug, "kitPrice"), oninput: function () { A.setProduct(slug, "kitPrice", kp.value); } });
+      card.appendChild(h("div", { class: "fld" }, h("div", { class: "top2" }, h("span", { class: "pill Setting" }, "Setting"), h("span", null, "Kit price in USD (" + (d.kitPack || "kit") + ")")), kp, h("div", { class: "orig" }, "Original: $" + d.kitPrice + ". The Price above is for one vial.")));
+    }
     card.appendChild(txt("cartName", "Name shown in the cart"));
     card.appendChild(txt("cartPack", "Pack text shown in the cart"));
     card.appendChild(h("div", { class: "fld" }, h("label", null, so, " Sold out (shows Out of stock, cannot be added to the cart)")));

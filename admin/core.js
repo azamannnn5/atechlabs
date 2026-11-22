@@ -198,12 +198,12 @@
   A.pValue = function (slug, field) {
     var o = A.pOverride(slug), d = A.pdef[slug] || {};
     if (Object.prototype.hasOwnProperty.call(o, field)) return o[field];
-    return d[field] == null ? (field === "price" ? null : "") : d[field];
+    return d[field] == null ? ((field === "price" || field === "kitPrice") ? null : "") : d[field];
   };
   A.setProduct = function (slug, field, val) {
     var o = A.pOverride(slug), d = A.pdef[slug] || {};
-    var dv = d[field] == null ? (field === "price" ? null : (field === "soldout" || field === "hidden" ? false : "")) : d[field];
-    if (field === "price") { if (val === "" || val === undefined) val = null; else if (val !== null) val = Number(val); }
+    var dv = d[field] == null ? ((field === "price" || field === "kitPrice") ? null : (field === "soldout" || field === "hidden" ? false : "")) : d[field];
+    if (field === "price" || field === "kitPrice") { if (val === "" || val === undefined) val = null; else if (val !== null) val = Number(val); }
     if (A.eq(val, dv)) delete o[field]; else o[field] = val;
     if (field === "soldout" || field === "hidden") { if (!val) delete o[field]; }
     var db = A.db.products[slug];
