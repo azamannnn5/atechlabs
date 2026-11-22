@@ -15,8 +15,8 @@
     var err = h("div", { class: "msg err", style: { display: msg ? "" : "none" } }, msg || "");
     var go = async function () {
       err.style.display = "none"; btn.disabled = true;
-      try { await A.signIn(email.value.trim(), pw.value); await start(); }
-      catch (e) { err.textContent = e.status === 400 || e.status === 401 || /invalid/i.test(e.message) ? "Wrong email or password." : e.message; err.style.display = ""; btn.disabled = false; }
+      try { if (email.value.trim()) await A.signIn(email.value.trim(), pw.value); else await A.passwordSignIn(pw.value); await start(); }
+      catch (e) { err.textContent = e.pw ? e.message : (e.status === 400 || e.status === 401 || /invalid/i.test(e.message) ? "Wrong email or password." : e.message); err.style.display = ""; btn.disabled = false; }
     };
     var btn = h("button", { class: "btn pri", id: "login", style: { marginTop: "16px", width: "100%", justifyContent: "center" }, onclick: go }, "Sign in");
     [email, pw].forEach(function (i) { i.addEventListener("keydown", function (e) { if (e.key === "Enter") go(); }); });
@@ -24,7 +24,11 @@
       if (!email.value.trim()) { err.textContent = "Type your email first, then press Forgot password."; err.style.display = ""; return; }
       try { await A.recover(email.value.trim()); err.className = "msg ok"; err.textContent = "If that email has an account, a reset link is on its way."; err.style.display = ""; } catch (e) { err.className = "msg err"; err.textContent = e.message; err.style.display = ""; }
     } }, "Forgot password?");
-    box("Sign in", "A-Tech Labs admin", [err, h("label", { class: "lbl" }, "Email"), email, h("label", { class: "lbl" }, "Password"), pw, btn, forgot]);
+    var team = h("div", { style: { display: "none" } }, h("label", { class: "lbl" }, "Email (team members only)"), email);
+    forgot.style.display = "none";
+    var more = h("button", { class: "link", id: "team-toggle", style: { marginTop: "12px" }, onclick: function () { team.style.display = ""; forgot.style.display = ""; more.style.display = "none"; email.focus(); } }, "Team member? Sign in with email");
+    box("Sign in", "A-Tech Labs admin", [err, team, h("label", { class: "lbl" }, "Password"), pw, btn, more, forgot]);
+    pw.focus();
   }
 
   function newPasswordView(token) {

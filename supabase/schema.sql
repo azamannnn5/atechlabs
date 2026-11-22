@@ -319,7 +319,7 @@ begin
     'valid', msg is null, 'message', msg, 'welcome', is_welcome and applied is not null,
     'subtotal', sub, 'count', cnt, 'bulk_pct', bpct, 'bulk_discount', bdisc,
     'code', applied, 'code_discount', pdisc, 'discount', disc, 'discount_note', note,
-    'shipping', ship, 'free_at', free_at, 'fee', fee, 'min_order', min_o, 'min_ok', sub >= min_o,
+    'shipping', ship, 'free_at', free_at, 'fee', fee, 'min_order', min_o, 'min_ok', (after + ship) >= min_o,
     'total', after + ship);
 end $$;
 
@@ -551,3 +551,11 @@ on conflict (id) do nothing;
 -- insert into public.admins (user_id, email, role)
 -- select id, lower(email), 'owner' from auth.users where lower(email) = lower('YOUR_EMAIL_HERE')
 -- on conflict (user_id) do update set role = 'owner';
+
+
+-- Order numbers start at 10001 (shown on the site as ATLABS10001). Safe to run again.
+do $$ begin
+  if coalesce((select max(order_no) from public.orders), 0) < 10001 then
+    perform setval(pg_get_serial_sequence('public.orders', 'order_no'), 10000, true);
+  end if;
+end $$;

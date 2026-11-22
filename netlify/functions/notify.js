@@ -80,7 +80,7 @@ exports.handler = async (event) => {
         instr = String(d[{ "Bitcoin": "bitcoin", "Apple Pay": "applepay", "Chime": "chime" }[row.payment_method]] || "").trim();
       } catch (e) {}
       const invoice =
-        `<h2 style="margin:0 0 4px">Invoice for order #${esc(row.order_no)}</h2>` +
+        `<h2 style="margin:0 0 4px">Invoice for order ATLABS${esc(row.order_no)}</h2>` +
         `<p style="margin:0 0 16px;color:#555">${esc(name)} - ${esc(new Date(row.created_at).toUTCString())}</p>` +
         `<table style="border-collapse:collapse;width:100%;max-width:640px"><thead><tr><th ${th}>Item</th><th ${th}>Qty</th><th ${th}>Price</th><th ${th}>Total</th></tr></thead><tbody>${rowsHtml}</tbody></table>` +
         `<p style="margin:12px 0 0">Subtotal: ${money(row.subtotal)}<br>` +
@@ -97,7 +97,7 @@ exports.handler = async (event) => {
       await sendMail({
         to,
         replyTo: row.email || undefined,
-        subject: `New order #${row.order_no} from ${row.customer_name}`,
+        subject: `New order ATLABS${row.order_no} from ${row.customer_name}`,
         html: invoice,
       });
       if (row.email) {
@@ -105,7 +105,7 @@ exports.handler = async (event) => {
           await sendMail({
             to: row.email,
             replyTo: to,
-            subject: `Your invoice for order #${row.order_no}`,
+            subject: `Your invoice for order ATLABS${row.order_no}`,
             html: `<p>Hi ${esc(row.customer_name)},</p><p>Thank you for your order. This is your invoice. We will contact you by ${esc(String(row.contact_method || "").toLowerCase() || "your chosen method")} to confirm your order.</p>` + payBlock + invoice + `<p>${esc(name)}</p>`,
           });
         } catch (e) { /* the owner copy already went out */ }
@@ -121,6 +121,8 @@ exports.handler = async (event) => {
     return json(200, { ok: true });
   } catch (e) {
     console.error(e);
-    return json(500, { error: "could not send" });
+    // give the claim back so the call can be retried
+    try { await sb((type === "order" ? "orders" : "messages") + "?id=eq." + id, { method: "PATCH", body: JSON.stringify({ notified_at: null }) }); } catch (e2) {}
+    return json(500, { error: "could not send", detail: String(e && e.message || e).slice(0, 300) });
   }
 };

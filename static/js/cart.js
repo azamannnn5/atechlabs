@@ -124,6 +124,24 @@
     for (var i = 0; i < els.length; i++) els[i].textContent = n;
   }
 
+  // Brief "Added to cart" pop-up at the bottom of the screen
+  var toastTimer = null;
+  function toast() {
+    var t = document.getElementById("atl-toast");
+    if (!t) {
+      var st = document.createElement("style");
+      st.textContent = "#atl-toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,16px);display:flex;align-items:center;gap:10px;padding:12px 20px;background:#111;color:#fff;border-radius:999px;font-size:15px;font-weight:600;box-shadow:0 6px 24px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:99999;white-space:nowrap}" +
+        "#atl-toast.on{opacity:1;transform:translate(-50%,0)}#atl-toast i{display:inline-flex;width:22px;height:22px;border-radius:50%;background:#22c55e;align-items:center;justify-content:center}";
+      document.head.appendChild(st);
+      t = document.createElement("div"); t.id = "atl-toast"; t.setAttribute("role", "status"); t.setAttribute("aria-live", "polite");
+      t.innerHTML = '<i><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i><span>Added to cart</span>';
+      document.body.appendChild(t);
+    }
+    t.classList.remove("on"); void t.offsetWidth; t.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove("on"); }, 1600);
+  }
+
   function add(slug, qty) {
     if (!PRODUCTS[slug] || PRODUCTS[slug].price == null) return;
     var c = load();
@@ -157,7 +175,7 @@
           var q = parseInt(row.querySelector("input").value, 10);
           if (!(q > 0)) q = 1;
           add(s, q);
-          row.querySelector("[data-buy-msg]").textContent = "Added to cart.";
+          toast();
         });
       });
     }
@@ -167,7 +185,7 @@
   function renderCardPrices() {
     var cards = document.querySelectorAll('a.card[href*="product/"]');
     for (var i = 0; i < cards.length; i++) {
-      var a = cards[i], m = a.getAttribute("href").match(/product\/([^\/]+)\.html/);
+      var a = cards[i], m = a.getAttribute("href").match(/product\/([^\/?#]+?)(?:\.html)?(?:[?#].*)?$/);
       if (!m || !PRODUCTS[m[1]] || a.parentNode.hasAttribute("data-card-wrap")) continue;
       var slug = m[1], p = PRODUCTS[slug], hasKit = !!PRODUCTS[slug + "-kit"];
       var el = document.createElement("p");
@@ -186,8 +204,7 @@
           var btn = document.createElement("button"); btn.type = "button"; btn.className = "btn btn-dark btn-sm flex-fill"; btn.textContent = "Add to cart";
           (function (bt, sl) {
             bt.addEventListener("click", function () {
-              add(sl, 1); bt.textContent = "Added";
-              setTimeout(function () { bt.textContent = "Add to cart"; }, 1500);
+              add(sl, 1); toast();
             });
           })(btn, slug);
           row.appendChild(btn);
@@ -211,7 +228,7 @@
     var fee = numOr(sh.fee, 18), freeAt = numOr(sh.freeAt, 150), minO = numOr(sh.minOrder, 100), cap = numOr(sh.cap, 30);
     var bd = Math.round(sub * bpct) / 100, disc = cap > 0 ? Math.min(bd, Math.round(sub * cap) / 100) : bd, after = sub - disc;
     return { valid: true, message: null, subtotal: sub, count: cnt, bulk_pct: bpct, bulk_discount: bd, code: null, code_discount: 0, discount: disc,
-      shipping: (sub === 0 || after >= freeAt) ? 0 : fee, free_at: freeAt, fee: fee, min_order: minO, min_ok: sub >= minO, total: after + ((sub === 0 || after >= freeAt) ? 0 : fee) };
+      shipping: (sub === 0 || after >= freeAt) ? 0 : fee, free_at: freeAt, fee: fee, min_order: minO, min_ok: after + ((sub === 0 || after >= freeAt) ? 0 : fee) >= minO, total: after + ((sub === 0 || after >= freeAt) ? 0 : fee) };
   }
   function esc(x) { return String(x == null ? "" : x).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function attr(x) { return esc(x); }
@@ -291,10 +308,9 @@
       html += '<div class="fs-20 fw-bold">Total: ' + money(q.total) + ' USD</div>';
       el.innerHTML = html;
       var n = document.getElementById("cart-notes"), t = "";
-      if (q.min_ok === false) t += '<div class="text-danger fw-semibold">Minimum order is ' + money(q.min_order) + '. Add ' + money(q.min_order - total) + ' more to place your order.</div>';
+      if (q.min_ok === false) t += '<div class="text-danger fw-semibold">Minimum order is ' + money(q.min_order) + '. Add ' + money(Math.max(q.min_order - q.total, 0)) + ' more to place your order.</div>';
       else if (q.shipping > 0) t += '<div class="text-secondary">Add ' + money(Math.max(q.free_at - (total - q.discount), 0)) + ' more for free shipping.</div>';
       else t += '<div class="text-success">Free shipping on this order.</div>';
-      if (qtyAll < 3) t += '<div class="text-secondary">Buy 3 or more items and save automatically: 3-5 items 5%, 6-9 items 7%, 10+ items 10%.</div>';
       if (n) n.innerHTML = t;
       var m = document.getElementById("promo-msg");
       if (m && promoMsg) { m.className = "small mt-1 " + (promoMsg.ok ? "text-success" : "text-danger"); m.textContent = promoMsg.text; }
@@ -390,7 +406,7 @@
       var email = form.email, contact = form.contact, pay = form.pay;
       save({}); quote = null;
       root.innerHTML = '<div class="py-4"><h4 class="mb-3">Thank you, your order is placed.</h4>' +
-        '<p class="fs-20">Order #' + esc(res && res.order_no) + (res && res.total != null ? " - total " + money(Number(res.total)) + " USD" : "") + '</p>' +
+        '<p class="fs-20">Order ATLABS' + esc(res && res.order_no) + (res && res.total != null ? " - total " + money(Number(res.total)) + " USD" : "") + '</p>' +
         (res && res.instructions ? '<div class="border border-2 border-dark p-3 mb-3"><div class="fw-bold mb-1">How to pay with ' + esc(pay) + '</div><div style="white-space:pre-wrap">' + esc(res.instructions) + '</div></div>' : '') +
         '<p>An invoice was sent to ' + esc(email) + '. Check your spam folder if you do not see it. We will contact you by ' + esc(contact.toLowerCase()) + ' to confirm your order.</p>' +
         '<a class="btn btn-dark" href="' + ROOT + 'catalog.html">Keep browsing</a></div>';

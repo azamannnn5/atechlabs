@@ -70,6 +70,13 @@
     var j = await authReq("POST", "/token?grant_type=password", { email: email, password: pw });
     saveSession(fromToken(j));
   };
+  // Password-only sign in: the password is checked by a Netlify function (ADMIN_PASSWORD), which returns a normal session.
+  A.passwordSignIn = async function (pw) {
+    var res = await fetch("/.netlify/functions/admin-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) });
+    var j = null; try { j = await res.json(); } catch (e) {}
+    if (!res.ok || !j || !j.access_token) { var err = new Error((j && j.error) || "Could not sign in."); err.status = res.status; err.pw = true; throw err; }
+    saveSession(fromToken(j));
+  };
   A.refresh = async function () {
     if (!A.session || !A.session.refresh_token) throw new Error("no session");
     var j = await authReq("POST", "/token?grant_type=refresh_token", { refresh_token: A.session.refresh_token });
