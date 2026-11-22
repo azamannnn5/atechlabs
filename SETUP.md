@@ -46,7 +46,7 @@ Open your-site.netlify.app/admin/ and sign in with the login from step 2.
 In the admin:
 - Orders and contact details: the order email (contact@atech-labs.com) and the WhatsApp number.
 - Payment instructions (Site): your Bitcoin address, Apple Pay number and Chime tag. Customers see the one for their method after ordering and in their invoice email.
-- Shipping and discounts (Site): shipping fee ($18), free shipping from $150, minimum order $100 (products after discounts plus shipping), and the bulk discount tiers (3-5 items 5%, 6-9 items 7%, 10+ items 10%). Each box can be changed; an empty box uses the standard value.
+- Shipping and discounts (Site): shipping by country (USA $18 free from $150, Canada $40 free from $200, Europe and Australia $50 free from $300; Europe means Belgium, Denmark, France, Germany and the United Kingdom), minimum order $100 (products after discounts plus shipping), and the bulk discount tiers (3-5 items 5%, 6-9 items 7%, 10+ items 10%). Each box can be changed; an empty box uses the standard value.
 - Welcome popup (Site): turn it on or off, set the code (STRONG26) and the percent (10). Signups are listed under Customers, Subscribers. Each email can use the code once.
 - Hours and social links (Site): shown in the footer.
 - Promo codes (under Customers): add other codes, for example SAVE10 as 10 percent off. The cart checks them in the database.

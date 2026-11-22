@@ -122,6 +122,48 @@
     var n = count(load());
     var els = document.querySelectorAll("[data-cart-count]");
     for (var i = 0; i < els.length; i++) els[i].textContent = n;
+    cartWidget(n);
+  }
+
+  // Floating cart button above the live chat bubble. Only shows when the cart has something in it.
+  function chatBubble() {
+    var all = document.body.querySelectorAll("div"), best = null;
+    for (var i = 0; i < all.length; i++) {
+      var e = all[i];
+      if (e.id === "atl-cartfab" || e.parentNode !== document.body) continue;
+      var cs = getComputedStyle(e);
+      if (cs.position !== "fixed" || cs.display === "none") continue;
+      var r = e.getBoundingClientRect();
+      if (r.width >= 40 && r.width <= 90 && r.height >= 40 && r.height <= 90 && r.left > window.innerWidth / 2 && r.top > window.innerHeight / 2) best = r;
+    }
+    return best;
+  }
+  function placeCartWidget() {
+    var w = document.getElementById("atl-cartfab"); if (!w || w.style.display === "none") return;
+    var vw = document.documentElement.clientWidth, b = chatBubble(), size = 56;
+    var right = b ? Math.max(vw - b.right, 8) : 20;
+    var bottom = b ? Math.max(window.innerHeight - b.top + 12, 12) : 90;
+    w.style.right = right + "px"; w.style.bottom = bottom + "px";
+    if (b) { size = Math.round(b.width); }
+    w.style.width = size + "px"; w.style.height = size + "px";
+  }
+  function cartWidget(n) {
+    if (/cart\.html$/.test(location.pathname) || /\/cart\/?$/.test(location.pathname) || !document.body) return;
+    var w = document.getElementById("atl-cartfab");
+    if (!w) {
+      var st = document.createElement("style");
+      st.textContent = "#atl-cartfab{position:fixed;right:20px;bottom:90px;width:56px;height:56px;border-radius:50%;background:#111;color:#fff;display:none;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.3);z-index:9999990;text-decoration:none}" +
+        "#atl-cartfab svg{width:26px;height:26px}#atl-cartfab sup{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:#e5231b;color:#fff;font-size:12px;font-weight:700;line-height:20px;text-align:center;box-sizing:border-box}";
+      document.head.appendChild(st);
+      w = document.createElement("a"); w.id = "atl-cartfab"; w.href = ROOT + "cart.html"; w.setAttribute("aria-label", "View cart");
+      w.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.7 12.4a1 1 0 0 0 1 .8h8.9a1 1 0 0 0 1-.8L20.5 7H6"/></svg><sup></sup>';
+      document.body.appendChild(w);
+      window.addEventListener("resize", placeCartWidget);
+      var tries = 0, iv = setInterval(function () { placeCartWidget(); if (++tries > 40) clearInterval(iv); }, 500);
+    }
+    w.querySelector("sup").textContent = n > 99 ? "99+" : n;
+    w.style.display = n > 0 ? "flex" : "none";
+    placeCartWidget();
   }
 
   // Brief "Added to cart" pop-up at the bottom of the screen
@@ -216,7 +258,16 @@
 
   // ---------- Cart page ----------
   var PAYMENTS = ["Bitcoin", "Apple Pay", "Chime"], CONTACTS = ["Text message", "WhatsApp"];
-  var form = { name: "", phone: "", email: "", addr: "", note: "", promo: "", pay: "", contact: "" }, quote = null, promoMsg = null;
+  // Countries we ship to (USA first, then alphabetical). Fees can be changed in the admin; these are the standard values.
+  var COUNTRIES = ["USA", "Australia", "Belgium", "Canada", "Denmark", "France", "Germany", "United Kingdom"];
+  function shipRule(country, sh) {
+    sh = sh || ((CMS.snap || {}).settings || {}).shop || {};
+    if (country === "Canada") return { fee: numOr(sh.caFee, 40), freeAt: numOr(sh.caFreeAt, 200) };
+    if (country === "Australia") return { fee: numOr(sh.auFee, 50), freeAt: numOr(sh.auFreeAt, 300) };
+    if (COUNTRIES.indexOf(country) > 0 && country !== "USA") return { fee: numOr(sh.euFee, 50), freeAt: numOr(sh.euFreeAt, 300) };
+    return { fee: numOr(sh.fee, 18), freeAt: numOr(sh.freeAt, 150) };
+  }
+  var form = { name: "", phone: "", email: "", country: "", addr: "", note: "", promo: "", pay: "", contact: "" }, quote = null, promoMsg = null;
   function numOr(v, d) { var n = parseFloat(v); return isFinite(n) && v !== "" && v != null ? n : d; }
   // Same rules as the database function quote_order(). Used only when the database is not connected.
   function localQuote(sub, cnt) {
@@ -225,7 +276,7 @@
       var mn = numOr(sh["b" + i + "min"], dmin[i - 1]), mx = ("b" + i + "max") in sh ? (sh["b" + i + "max"] === "" ? null : numOr(sh["b" + i + "max"], null)) : dmax[i - 1], pc = numOr(sh["b" + i + "pct"], dpct[i - 1]);
       if (cnt >= mn && (mx == null || cnt <= mx)) bpct = pc;
     }
-    var fee = numOr(sh.fee, 18), freeAt = numOr(sh.freeAt, 150), minO = numOr(sh.minOrder, 100), cap = numOr(sh.cap, 30);
+    var sr = shipRule(form.country, sh), fee = sr.fee, freeAt = sr.freeAt, minO = numOr(sh.minOrder, 100), cap = numOr(sh.cap, 30);
     var bd = Math.round(sub * bpct) / 100, disc = cap > 0 ? Math.min(bd, Math.round(sub * cap) / 100) : bd, after = sub - disc;
     return { valid: true, message: null, subtotal: sub, count: cnt, bulk_pct: bpct, bulk_discount: bd, code: null, code_discount: 0, discount: disc,
       shipping: (sub === 0 || after >= freeAt) ? 0 : fee, free_at: freeAt, fee: fee, min_order: minO, min_ok: after + ((sub === 0 || after >= freeAt) ? 0 : fee) >= minO, total: after + ((sub === 0 || after >= freeAt) ? 0 : fee) };
@@ -282,7 +333,10 @@
       '<div class="col-md-6"><input id="f-name" class="form-control" placeholder="Full name *" value="' + attr(form.name) + '"></div>' +
       '<div class="col-md-6"><input id="f-phone" class="form-control" placeholder="Phone number *" value="' + attr(form.phone) + '"></div>' +
       '<div class="col-12"><input id="f-email" type="email" class="form-control" placeholder="Email * (your invoice is sent here)" value="' + attr(form.email) + '"></div>' +
-      '<div class="col-12"><input id="f-addr" class="form-control" placeholder="Delivery address and country *" value="' + attr(form.addr) + '"></div>' +
+      '<div class="col-12"><select id="f-country" class="form-select"><option value="">Select your country *</option>' +
+        COUNTRIES.map(function (c) { return '<option value="' + c + '"' + (form.country === c ? " selected" : "") + '>' + c + '</option>'; }).join("") + '</select>' +
+        '<div class="small text-secondary mt-1" id="ship-note"></div></div>' +
+      '<div class="col-12"><input id="f-addr" class="form-control" placeholder="Delivery address *" value="' + attr(form.addr) + '"></div>' +
       '<div class="col-12"><div class="fw-semibold mb-1">Payment Method *</div>' + radios("pay", PAYMENTS) + '</div>' +
       '<div class="col-12"><div class="fw-semibold">How should we contact you about your order? *</div>' +
       '<div class="small text-secondary mb-1">Pick the one you\'re most active on.</div>' + radios("contact", CONTACTS) + '</div>' +
@@ -292,8 +346,8 @@
       '<div class="small mt-1" id="promo-msg"></div></div>' +
       '<div class="col-12"><textarea id="f-note" class="form-control" rows="2" placeholder="Notes (optional)">' + esc(form.note) + '</textarea></div></div>' +
       '<div class="d-flex flex-wrap gap-3">' +
-      '<button type="button" class="btn btn-dark" id="order-mail">Place order</button>' +
-      '<button type="button" class="btn btn-outline-dark" id="order-wa">Order on WhatsApp</button>' +
+      '<button type="button" class="btn btn-dark" id="order-mail">Order via email</button>' +
+      '<button type="button" class="btn btn-outline-dark" id="order-wa">Order via WhatsApp</button>' +
       '<button type="button" class="btn btn-link link-dark" id="clear-cart">Clear cart</button></div>' +
       '<div class="small text-danger mt-3" id="order-warn"></div>';
 
@@ -304,11 +358,16 @@
       if (q.bulk_discount > 0) html += '<div class="text-success">Bulk discount (' + q.bulk_pct + '% off): -' + money(q.bulk_discount) + '</div>';
       if (q.code && q.code_discount > 0) html += '<div class="text-success">Code ' + esc(q.code) + ': -' + money(q.code_discount) + '</div>';
       if (q.discount < q.bulk_discount + (q.code_discount || 0) - 0.005) html += '<div class="small text-secondary">Discounts are capped, you save ' + money(q.discount) + ' in total.</div>';
-      html += '<div>Shipping: ' + (q.shipping > 0 ? money(q.shipping) : "Free") + '</div>';
-      html += '<div class="fs-20 fw-bold">Total: ' + money(q.total) + ' USD</div>';
+      if (!form.country) {
+        html += '<div>Shipping: choose your country below</div><div class="fs-20 fw-bold">Total: ' + money(q.total - q.shipping) + ' USD + shipping</div>';
+      } else {
+        html += '<div>Shipping: ' + (q.shipping > 0 ? money(q.shipping) : "Free") + '</div>';
+        html += '<div class="fs-20 fw-bold">Total: ' + money(q.total) + ' USD</div>';
+      }
       el.innerHTML = html;
       var n = document.getElementById("cart-notes"), t = "";
-      if (q.min_ok === false) t += '<div class="text-danger fw-semibold">Minimum order is ' + money(q.min_order) + '. Add ' + money(Math.max(q.min_order - q.total, 0)) + ' more to place your order.</div>';
+      if (!form.country) t = "";
+      else if (q.min_ok === false) t += '<div class="text-danger fw-semibold">Minimum order is ' + money(q.min_order) + '. Add ' + money(Math.max(q.min_order - q.total, 0)) + ' more to place your order.</div>';
       else if (q.shipping > 0) t += '<div class="text-secondary">Add ' + money(Math.max(q.free_at - (total - q.discount), 0)) + ' more for free shipping.</div>';
       else t += '<div class="text-success">Free shipping on this order.</div>';
       if (n) n.innerHTML = t;
@@ -322,7 +381,7 @@
       var items = cartItems();
       fetch(CFG.url.replace(/\/$/, "") + "/rest/v1/rpc/quote_order", {
         method: "POST", headers: { "apikey": CFG.anonKey, "Authorization": "Bearer " + CFG.anonKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ p_items: items.list, p_subtotal: items.total, p_code: code, p_email: form.email })
+        body: JSON.stringify({ p_items: items.list, p_subtotal: items.total, p_code: code, p_email: form.email, p_country: form.country || "USA" })
       }).then(function (r) { return r.ok ? r.json() : null; }).then(function (res) {
         if (!res) throw new Error("no quote");
         quote = res;
@@ -339,6 +398,13 @@
       });
       return { list: list, total: t };
     }
+    function shipNote() {
+      var el = document.getElementById("ship-note"); if (!el) return;
+      if (!form.country) { el.textContent = "We ship to: " + COUNTRIES.join(", ") + ". Choose your country to see the shipping fee."; return; }
+      var r = shipRule(form.country);
+      el.textContent = "Shipping to " + form.country + ": " + money(r.fee) + ", free on orders of " + money(r.freeAt) + " or more (after discounts).";
+    }
+    shipNote();
     summary();
     if (live) refresh();
     document.getElementById("promo-apply").addEventListener("click", refresh);
@@ -349,6 +415,7 @@
     root.addEventListener("change", function (e) {
       if (e.target.name === "pay" || e.target.name === "contact") form[e.target.name] = e.target.value;
       if (e.target.id === "f-email" && form.promo) refresh();
+      if (e.target.id === "f-country") { form.country = e.target.value; shipNote(); refresh(); }
     });
 
     root.querySelectorAll("button[data-act]").forEach(function (btn) {
@@ -369,12 +436,14 @@
         (q.bulk_discount > 0 ? "\nBulk discount (" + q.bulk_pct + "%): -" + money(q.bulk_discount) : "") +
         (q.code && q.code_discount > 0 ? "\nCode " + q.code + ": -" + money(q.code_discount) : "") +
         "\nShipping: " + (q.shipping > 0 ? money(q.shipping) : "Free") + "\nTotal: " + money(q.total) + " USD\n\n" +
-        "Name: " + v("f-name") + "\nPhone: " + v("f-phone") + "\nEmail: " + v("f-email") + "\nAddress: " + v("f-addr") +
+        "Name: " + v("f-name") + "\nPhone: " + v("f-phone") + "\nEmail: " + v("f-email") + "\nCountry: " + form.country + "\nAddress: " + v("f-addr") +
         "\nPayment method: " + form.pay + "\nContact me by: " + form.contact + "\nNotes: " + v("f-note");
     }
     function needDetails() {
       var v = function (id) { return document.getElementById(id).value.trim(); }, msg = "";
-      if (!v("f-name") || !v("f-phone") || !v("f-addr")) msg = "Please fill in your name, phone and address first.";
+      if (!v("f-name") || !v("f-phone")) msg = "Please fill in your name and phone number first.";
+      else if (!form.country) msg = "Please select your country.";
+      else if (!v("f-addr")) msg = "Please enter your delivery address.";
       else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v("f-email"))) msg = "Please enter a valid email. Your invoice is sent there.";
       else if (!form.pay) msg = "Please choose a payment method.";
       else if (!form.contact) msg = "Please choose how we should contact you.";
@@ -392,7 +461,7 @@
         body: JSON.stringify({
           p_name: v("f-name"), p_phone: v("f-phone"), p_email: v("f-email"),
           p_address: v("f-addr"), p_notes: v("f-note"), p_items: items, p_subtotal: t, p_channel: channel,
-          p_payment: form.pay, p_contact_method: form.contact, p_promo: form.promo
+          p_payment: form.pay, p_contact_method: form.contact, p_promo: form.promo, p_country: form.country
         })
       }).then(function (r) { if (!r.ok) throw new Error("save failed"); return r.json(); }).then(function (res) {
         if (res && res.id) {
@@ -429,7 +498,32 @@
     });
   }
 
+  // ---------- Shipping page (fees come from the admin settings) ----------
+  function renderShipping() {
+    var root = document.getElementById("ship-root"); if (!root) return;
+    var sh = ((CMS.snap || {}).settings || {}).shop || {}, minO = numOr(sh.minOrder, 100);
+    var us = shipRule("USA", sh), ca = shipRule("Canada", sh), eu = shipRule("Germany", sh), au = shipRule("Australia", sh);
+    function line(name, r) { return "<li><b>" + name + ":</b> " + money(r.fee) + " shipping, free on orders of " + money(r.freeAt) + " or more.</li>"; }
+    root.innerHTML = '<p class="fs-20">We ship to the following countries.</p><ul class="fs-20 mb-4">' +
+      line("USA", us) + line("Canada", ca) + line("Belgium, Denmark, France, Germany and the United Kingdom", eu) + line("Australia", au) + "</ul>" +
+      "<p>Free shipping is based on your order total after discounts. The minimum order is " + money(minO) + ", shipping included. All prices are in USD.</p>" +
+      "<p>We do not ship to other countries at this time.</p>";
+  }
+
+  // Adds a Shipping link to the footer menu of every page
+  function footerShippingLink() {
+    var ref = document.querySelector('.footer a[href$="authenticity.html"]');
+    if (!ref || document.querySelector('.footer a[href$="shipping.html"]')) return;
+    var a = ref.cloneNode(false); a.href = ref.getAttribute("href").replace(/authenticity\.html$/, "shipping.html"); a.textContent = "Shipping";
+    ref.parentNode.appendChild(a);
+  }
+  // the footer menu can be redrawn by the site editor, so put the link back if it goes missing
+  function watchFooter() {
+    var f = document.querySelector(".footer"); if (!f || !window.MutationObserver) return;
+    new MutationObserver(function () { footerShippingLink(); }).observe(f, { childList: true, subtree: true });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
-    updateBadge(); renderBuyBlocks(); renderCardPrices(); renderCart();
+    updateBadge(); renderBuyBlocks(); renderCardPrices(); renderCart(); renderShipping(); footerShippingLink(); watchFooter();
   });
 })();

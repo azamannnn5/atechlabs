@@ -90,7 +90,7 @@ exports.handler = async (event) => {
         `<p style="margin:16px 0 0"><b>Payment method:</b> ${esc(row.payment_method || "-")}<br>` +
         `<b>Contact by:</b> ${esc(row.contact_method || "-")}<br>` +
         `<b>Name:</b> ${esc(row.customer_name)}<br><b>Phone:</b> ${esc(row.phone)}<br><b>Email:</b> ${esc(row.email || "-")}<br>` +
-        `<b>Address:</b> ${esc(row.address)}<br><b>Notes:</b> ${esc(row.notes || "-")}<br><b>Sent via:</b> ${esc(row.channel || "-")}</p>`;
+        `<b>Country:</b> ${esc(row.country || "-")}<br><b>Address:</b> ${esc(row.address)}<br><b>Notes:</b> ${esc(row.notes || "-")}<br><b>Sent via:</b> ${esc(row.channel || "-")}</p>`;
       const payBlock = instr
         ? `<div style="border:2px solid #111;padding:12px 14px;margin:16px 0;max-width:640px"><b>How to pay with ${esc(row.payment_method)}</b><br><span style="white-space:pre-wrap">${esc(instr)}</span></div>`
         : "";

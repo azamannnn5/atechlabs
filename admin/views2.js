@@ -51,7 +51,7 @@
         list.appendChild(h("details", { class: "card", style: { margin: "6px 0" } },
           h("summary", null, "ATLABS" + o.order_no + "  " + o.customer_name + "  " + A.money(o.total != null ? o.total : o.subtotal) + "  ", h("span", { class: "chip" + (o.status === "new" ? " warn" : o.status === "cancelled" ? " bad" : " on") }, o.status), h("span", { class: "orig" }, "  " + A.date(o.created_at))),
           h("div", { style: { marginTop: "8px" } }, items),
-          h("p", null, h("b", null, "Phone: "), o.phone, h("br"), h("b", null, "Email: "), o.email || "-", h("br"), h("b", null, "Address: "), o.address, h("br"), h("b", null, "Notes: "), o.notes || "-", h("br"), h("b", null, "Sent via: "), o.channel || "-", h("br"), h("b", null, "Payment method: "), o.payment_method || "-", h("br"), h("b", null, "Contact by: "), o.contact_method || "-", h("br"), h("b", null, "Discount: "), Number(o.discount) > 0 ? "-" + A.money(o.discount) + (o.discount_note ? " (" + o.discount_note + ")" : "") : "-", h("br"), h("b", null, "Shipping: "), Number(o.shipping) > 0 ? A.money(o.shipping) : "Free", h("br"), h("b", null, "Total: "), A.money(o.total != null ? o.total : o.subtotal)),
+          h("p", null, h("b", null, "Phone: "), o.phone, h("br"), h("b", null, "Email: "), o.email || "-", h("br"), h("b", null, "Country: "), o.country || "-", h("br"), h("b", null, "Address: "), o.address, h("br"), h("b", null, "Notes: "), o.notes || "-", h("br"), h("b", null, "Sent via: "), o.channel || "-", h("br"), h("b", null, "Payment method: "), o.payment_method || "-", h("br"), h("b", null, "Contact by: "), o.contact_method || "-", h("br"), h("b", null, "Discount: "), Number(o.discount) > 0 ? "-" + A.money(o.discount) + (o.discount_note ? " (" + o.discount_note + ")" : "") : "-", h("br"), h("b", null, "Shipping: "), Number(o.shipping) > 0 ? A.money(o.shipping) : "Free", h("br"), h("b", null, "Total: "), A.money(o.total != null ? o.total : o.subtotal)),
           h("div", { class: "row" }, h("label", null, "Status ", sel), wa ? h("a", { class: "btn sm", target: "_blank", href: "https://wa.me/" + wa }, "Message on WhatsApp") : null,
             A.can("admin") ? h("button", { class: "btn sm bad", onclick: async function () { if (!confirm("Delete this order for good?")) return; try { await A.rest("DELETE", "orders?id=eq." + o.id); rows = rows.filter(function (x) { return x.id !== o.id; }); draw(); A.refreshBadges(); } catch (e) { A.toast(e.message); } } }, "Delete") : null),
           h("label", { class: "lbl" }, "Private note"), note, replyBox("order", o, "Your order ATLABS" + o.order_no)));
@@ -110,12 +110,18 @@
       { k: "gaId", label: "Google Analytics ID", type: "text", help: "Looks like G-XXXXXXXXXX" },
       { k: "pixelId", label: "Meta (Facebook) pixel ID", type: "text", help: "Numbers only" },
       { k: "headCode", label: "Custom code for the head", type: "code" }, { k: "bodyCode", label: "Custom code for the end of the page", type: "code" }] },
-    orders: { title: "Orders and contact details", grp: "orders", note: "Where orders go. Every order sends an invoice by Resend to this email and to the customer. The WhatsApp number is used by the Order on WhatsApp button in the cart.", fields: [
+    orders: { title: "Orders and contact details", grp: "orders", note: "Where orders go. Every order sends an invoice by Resend to this email and to the customer. The WhatsApp number is used by the Order via WhatsApp button in the cart.", fields: [
       { k: "email", label: "Orders email address", type: "text", help: "For example orders@yourdomain.com" },
       { k: "whatsapp", label: "WhatsApp number", type: "text", help: "Digits only with country code, for example 237600000000" }] },
     shop: { title: "Shipping and discounts", grp: "shop", note: "Shipping, the minimum order and the bulk order discount. Bulk discounts are by number of items in the cart and apply automatically. Leave a box empty to use the standard value shown in the hint.", fields: [
-      { k: "fee", label: "Shipping fee ($)", type: "text", help: "Standard: 18" },
-      { k: "freeAt", label: "Free shipping from ($)", type: "text", help: "Standard: 150. Counted after discounts." },
+      { k: "fee", label: "USA shipping fee ($)", type: "text", help: "Standard: 18" },
+      { k: "freeAt", label: "USA free shipping from ($)", type: "text", help: "Standard: 150. Counted after discounts." },
+      { k: "caFee", label: "Canada shipping fee ($)", type: "text", help: "Standard: 40" },
+      { k: "caFreeAt", label: "Canada free shipping from ($)", type: "text", help: "Standard: 200" },
+      { k: "euFee", label: "Europe shipping fee ($)", type: "text", help: "Standard: 50. Belgium, Denmark, France, Germany, United Kingdom." },
+      { k: "euFreeAt", label: "Europe free shipping from ($)", type: "text", help: "Standard: 300" },
+      { k: "auFee", label: "Australia shipping fee ($)", type: "text", help: "Standard: 50" },
+      { k: "auFreeAt", label: "Australia free shipping from ($)", type: "text", help: "Standard: 300" },
       { k: "minOrder", label: "Minimum order ($)", type: "text", help: "Standard: 100. Counted on the amount the customer pays: products after discounts plus shipping. Orders below this cannot be placed." },
       { k: "b1min", label: "Bulk tier 1: from items", type: "text", help: "Standard: 3" }, { k: "b1max", label: "Bulk tier 1: up to items", type: "text", help: "Standard: 5" }, { k: "b1pct", label: "Bulk tier 1: % off", type: "text", help: "Standard: 5" },
       { k: "b2min", label: "Bulk tier 2: from items", type: "text", help: "Standard: 6" }, { k: "b2max", label: "Bulk tier 2: up to items", type: "text", help: "Standard: 9" }, { k: "b2pct", label: "Bulk tier 2: % off", type: "text", help: "Standard: 7" },

@@ -77,6 +77,7 @@ alter table public.orders add column if not exists discount numeric not null def
 alter table public.orders add column if not exists total numeric;
 alter table public.orders add column if not exists shipping numeric not null default 0;
 alter table public.orders add column if not exists discount_note text;
+alter table public.orders add column if not exists country text;
 
 -- people who signed up through the welcome popup (admin only)
 create table if not exists public.subscribers (
@@ -254,7 +255,25 @@ $$;
 
 -- One price for a cart: bulk discount, promo or welcome code, shipping, total.
 -- The cart shows this and place_order() saves it, so both always agree.
-create or replace function public.quote_order(p_items jsonb, p_subtotal numeric, p_code text, p_email text)
+-- Shipping rule for a country: USA, Canada, Australia, and Europe (Belgium, Denmark, France, Germany, United Kingdom).
+-- Each fee and free-shipping amount can be changed in the admin (Site, Shipping and discounts).
+create or replace function public.ship_rule(p_country text, sh jsonb, out fee numeric, out free_at numeric)
+language plpgsql immutable as $$
+begin
+  case p_country
+    when 'Canada' then
+      fee := public.num_or(sh->>'caFee', 40); free_at := public.num_or(sh->>'caFreeAt', 200);
+    when 'Australia' then
+      fee := public.num_or(sh->>'auFee', 50); free_at := public.num_or(sh->>'auFreeAt', 300);
+    when 'Belgium', 'Denmark', 'France', 'Germany', 'United Kingdom' then
+      fee := public.num_or(sh->>'euFee', 50); free_at := public.num_or(sh->>'euFreeAt', 300);
+    else
+      fee := public.num_or(sh->>'fee', 18); free_at := public.num_or(sh->>'freeAt', 150);
+  end case;
+end $$;
+
+drop function if exists public.quote_order(jsonb,numeric,text,text);
+create or replace function public.quote_order(p_items jsonb, p_subtotal numeric, p_code text, p_email text, p_country text default 'USA')
 returns jsonb language plpgsql stable security definer set search_path = public as $$
 declare
   sh jsonb := coalesce((select data from public.settings where grp = 'shop'), '{}'::jsonb);
@@ -268,8 +287,7 @@ declare
   dmin numeric[] := array[3, 6, 10]; dmax numeric[] := array[5, 9, null]; dpct numeric[] := array[5, 7, 10];
   k int; mn numeric; mx numeric; pc2 numeric; note text := '';
 begin
-  fee := public.num_or(sh->>'fee', 18);
-  free_at := public.num_or(sh->>'freeAt', 150);
+  select r.fee, r.free_at into fee, free_at from public.ship_rule(trim(coalesce(p_country, '')), sh) r;
   min_o := public.num_or(sh->>'minOrder', 100);
   cap := public.num_or(sh->>'cap', 30);
   if jsonb_typeof(p_items) = 'array' then
@@ -324,10 +342,11 @@ begin
 end $$;
 
 drop function if exists public.place_order(text,text,text,text,text,jsonb,numeric,text,text,text,text);
+drop function if exists public.place_order(text,text,text,text,text,jsonb,numeric,text,text,text,text,text);
 create or replace function public.place_order(
   p_name text, p_phone text, p_email text, p_address text, p_notes text,
   p_items jsonb, p_subtotal numeric, p_channel text,
-  p_payment text, p_contact_method text, p_promo text)
+  p_payment text, p_contact_method text, p_promo text, p_country text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare new_id uuid; new_no bigint; q jsonb; n int; pay_key text; instr text;
 begin
@@ -335,6 +354,7 @@ begin
   if length(trim(coalesce(p_phone,''))) < 4 or length(p_phone) > 60 then raise exception 'invalid phone'; end if;
   if length(trim(coalesce(p_address,''))) < 4 or length(p_address) > 600 then raise exception 'invalid address'; end if;
   if coalesce(p_email,'') !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(p_email) > 200 then raise exception 'invalid email'; end if;
+  if p_country not in ('USA','Australia','Belgium','Canada','Denmark','France','Germany','United Kingdom') then raise exception 'invalid country'; end if;
   if p_payment not in ('Bitcoin','Apple Pay','Chime') then raise exception 'invalid payment method'; end if;
   if p_contact_method not in ('Text message','WhatsApp') then raise exception 'invalid contact method'; end if;
   if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 or jsonb_array_length(p_items) > 100 then
@@ -344,7 +364,7 @@ begin
     raise exception 'too many orders';
   end if;
 
-  q := public.quote_order(p_items, p_subtotal, p_promo, p_email);
+  q := public.quote_order(p_items, p_subtotal, p_promo, p_email, p_country);
   if not (q->>'min_ok')::boolean then raise exception 'minimum order not met'; end if;
 
   -- use up the code atomically; if someone else just used it, price the cart without it
@@ -359,15 +379,15 @@ begin
         where promo_codes.code = q->>'code' and (max_uses is null or uses < max_uses);
     end if;
     get diagnostics n = row_count;
-    if n = 0 then q := public.quote_order(p_items, p_subtotal, '', p_email); end if;
+    if n = 0 then q := public.quote_order(p_items, p_subtotal, '', p_email, p_country); end if;
   end if;
 
   insert into public.orders (customer_name, phone, email, address, notes, items, subtotal, channel,
-                             payment_method, contact_method, promo_code, discount, shipping, discount_note, total)
+                             payment_method, contact_method, promo_code, discount, shipping, discount_note, total, country)
   values (trim(p_name), trim(p_phone), trim(p_email), trim(p_address),
           left(p_notes, 2000), p_items, (q->>'subtotal')::numeric, left(p_channel, 30),
           p_payment, p_contact_method, q->>'code', (q->>'discount')::numeric, (q->>'shipping')::numeric,
-          nullif(q->>'discount_note', ''), (q->>'total')::numeric)
+          nullif(q->>'discount_note', ''), (q->>'total')::numeric, p_country)
   returning id, order_no into new_id, new_no;
 
   pay_key := case p_payment when 'Bitcoin' then 'bitcoin' when 'Apple Pay' then 'applepay' else 'chime' end;
@@ -391,8 +411,8 @@ begin
 end $$;
 
 grant execute on function public.submit_message(text,text,text,text) to anon, authenticated;
-grant execute on function public.place_order(text,text,text,text,text,jsonb,numeric,text,text,text,text) to anon, authenticated;
-grant execute on function public.quote_order(jsonb,numeric,text,text) to anon, authenticated;
+grant execute on function public.place_order(text,text,text,text,text,jsonb,numeric,text,text,text,text,text) to anon, authenticated;
+grant execute on function public.quote_order(jsonb,numeric,text,text,text) to anon, authenticated;
 grant execute on function public.subscribe(text) to anon, authenticated;
 
 -- Owner adds a team member AFTER creating their login in Authentication > Users
@@ -559,3 +579,10 @@ do $$ begin
     perform setval(pg_get_serial_sequence('public.orders', 'order_no'), 10000, true);
   end if;
 end $$;
+
+
+-- The Netlify functions (order emails, password sign in) use the service_role key. Give it access to the tables. Safe to run again.
+grant usage on schema public to service_role;
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+grant execute on all functions in schema public to service_role;
