@@ -127,10 +127,10 @@
 
   // Floating cart button above the live chat bubble. Only shows when the cart has something in it.
   function chatBubble() {
-    var all = document.body.querySelectorAll("div"), best = null;
+    var all = document.body.querySelectorAll("#smartsupp-widget-container *, body > div"), best = null;
     for (var i = 0; i < all.length; i++) {
       var e = all[i];
-      if (e.id === "atl-cartfab" || e.parentNode !== document.body) continue;
+      if (e.id === "atl-cartfab") continue;
       var cs = getComputedStyle(e);
       if (cs.position !== "fixed" || cs.display === "none") continue;
       var r = e.getBoundingClientRect();
