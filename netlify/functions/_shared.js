@@ -36,6 +36,21 @@ async function sendMail({ to, subject, html, replyTo }) {
   return res.json();
 }
 
+// Instant phone alert via Telegram. Does nothing unless TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set,
+// and never throws, so an alert problem can never break an order.
+async function sendTelegram(text) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return;
+  try {
+    await fetch("https://api.telegram.org/bot" + token + "/sendMessage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: String(text).slice(0, 3900) }),
+    });
+  } catch (e) { console.error("telegram failed", e); }
+}
+
 async function ownerEmail() {
   try {
     const rows = await sb("settings?grp=eq.orders&select=data");
@@ -54,4 +69,4 @@ async function siteName() {
   return process.env.SITE_NAME || "A-Tech Labs";
 }
 
-module.exports = { SB_URL, SB_KEY, json, esc, isUuid, sb, sendMail, ownerEmail, siteName };
+module.exports = { SB_URL, SB_KEY, json, esc, isUuid, sb, sendMail, sendTelegram, ownerEmail, siteName };

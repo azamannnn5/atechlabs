@@ -1,6 +1,6 @@
 // Called by the website right after an order or contact message is saved.
 // Reads the saved row by id (never trusts the browser's text) and emails the owner via Resend.
-const { json, esc, isUuid, sb, sendMail, ownerEmail, siteName } = require("./_shared");
+const { json, esc, isUuid, sb, sendMail, sendTelegram, ownerEmail, siteName } = require("./_shared");
 
 const money = (n) => "$" + Number(n || 0).toFixed(2);
 
@@ -60,6 +60,17 @@ exports.handler = async (event) => {
       method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ notified_at: new Date().toISOString() }),
     });
     if (!claimed || !claimed.length) return json(200, { ok: true, skipped: "already sent" });
+
+    // Telegram alert first, so it goes out even if email is not set up
+    if (type === "order") {
+      const tItems = (Array.isArray(row.items) ? row.items : []).map((i) => `- ${i.name}${i.pack ? " (" + i.pack + ")" : ""} x${i.qty}`).join("\n");
+      const tTotal = row.total != null ? Number(row.total) : Number(row.subtotal || 0) - Number(row.discount || 0) + Number(row.shipping || 0);
+      await sendTelegram(
+        `NEW ORDER ATLABS${row.order_no}\nTotal: ${money(tTotal)}\nPayment: ${row.payment_method || "-"}\n\nName: ${row.customer_name || "-"}\nPhone: ${row.phone || "-"}\nEmail: ${row.email || "-"}\nContact by: ${row.contact_method || "-"}\nCountry: ${row.country || "-"}\nAddress: ${row.address || "-"}\n\nItems:\n${tItems}\n\nNotes: ${row.notes || "-"}`
+      );
+    } else {
+      await sendTelegram(`NEW MESSAGE from ${row.name || "-"} (${row.email || "-"})\n\n${row.message || ""}`);
+    }
 
     const to = await ownerEmail();
     const name = await siteName();
